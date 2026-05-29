@@ -16,7 +16,7 @@ from uap_signal.display import (
     print_source_errors,
     print_sources,
 )
-from uap_signal.models import ContentType, Release, SourceTrust
+from uap_signal.models import AnalysisResult, Classification, ContentType, Release, SourceTrust
 from uap_signal.sources import SOURCE_REGISTRY, fetch_all
 from uap_signal.store import Store
 
@@ -33,6 +33,7 @@ def check(
     source: str | None = typer.Option(None, "--source", help="Single source name."),
     max_items: int | None = typer.Option(None, "--max-items", help="Max items sent to LLM."),
     dry_run: bool = typer.Option(False, "--dry-run", help="Fetch and show items without LLM analysis or DB writes."),
+    new_only: bool = typer.Option(False, "--new-only", help="Skip items already analyzed."),
     model_provider: str | None = typer.Option(None, "--provider", help="anthropic or openai."),
     model: str | None = typer.Option(None, "--model", help="Override LLM model."),
 ) -> None:
@@ -54,6 +55,14 @@ def check(
     releases = releases[: max(1, max_items or settings.max_items)]
     print_source_errors(source_errors)
 
+    if new_only:
+        with Store(settings.database_path) as store:
+            seen = store.get_analyzed_urls()
+        releases = [r for r in releases if r.url not in seen]
+        if not releases:
+            typer.echo("All items already analyzed.")
+            return
+
     if dry_run:
         print_fetched_table(releases)
         print_cost_estimate(len(releases))
@@ -62,7 +71,26 @@ def check(
     rows = []
     with Store(settings.database_path) as store:
         store.save_releases(releases)
+        seen_urls = store.get_analyzed_urls()
+        new_count = 0
+        cached_count = 0
         for release in releases:
+            if release.url in seen_urls:
+                cached = store.get_analysis_by_url(release.url)
+                if cached:
+                    analysis = AnalysisResult(
+                        release_url=release.url,
+                        classification=Classification(cached["classification"]),
+                        summary=cached["summary"],
+                        why_it_matters=cached["why_it_matters"],
+                        novelty_score=int(cached["novelty_score"]),
+                        model_used=cached["model_used"],
+                        content_hash=cached["content_hash"],
+                        reasoning=cached["reasoning"],
+                    )
+                    rows.append((release, analysis))
+                    cached_count += 1
+                    continue
             classification = classify_release(release, store=store)
             try:
                 analysis = summarize_release(
@@ -76,8 +104,12 @@ def check(
             except AnalysisConfigurationError as exc:
                 raise typer.BadParameter(str(exc)) from exc
             rows.append((release, analysis))
+            new_count += 1
 
     print_report(target_date.isoformat(), rows)
+    if new_count or cached_count:
+        from rich.console import Console
+        Console().print(f"{new_count} new, {cached_count} cached", style="dim")
 
 
 @app.command("analyze")
@@ -134,8 +166,6 @@ def history(days: int = typer.Option(7, "--days")) -> None:
             first_seen_date=row["first_seen_date"],
             raw_text=row["raw_text"],
         )
-        from uap_signal.models import AnalysisResult, Classification
-
         analysis = AnalysisResult(
             release_url=row["url"],
             classification=Classification(row["classification"] or "CONTEXT"),

@@ -134,6 +134,18 @@ class Store:
         )
         self._conn.commit()
 
+    def get_analyzed_urls(self) -> set[str]:
+        return {
+            row["release_url"]
+            for row in self._conn.execute("SELECT release_url FROM analyses").fetchall()
+        }
+
+    def get_analysis_by_url(self, url: str) -> sqlite3.Row | None:
+        return self._conn.execute(
+            "SELECT * FROM analyses WHERE release_url = ?",
+            (url,),
+        ).fetchone()
+
     def get_analysis_by_hash(self, content_hash: str | None) -> sqlite3.Row | None:
         if not content_hash:
             return None
