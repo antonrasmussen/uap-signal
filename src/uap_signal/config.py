@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 DEFAULT_MODELS = {
-    "anthropic": "claude-3-5-sonnet-latest",
+    "anthropic": "claude-sonnet-4-5",
     "openai": "gpt-4.1-mini",
 }
 
