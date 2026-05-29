@@ -9,7 +9,13 @@ import typer
 from uap_signal.analyzer import AnalysisConfigurationError, summarize_release
 from uap_signal.classifier import classify_release
 from uap_signal.config import get_settings
-from uap_signal.display import print_cost_estimate, print_report, print_source_errors, print_sources
+from uap_signal.display import (
+    print_cost_estimate,
+    print_fetched_table,
+    print_report,
+    print_source_errors,
+    print_sources,
+)
 from uap_signal.models import ContentType, Release, SourceTrust
 from uap_signal.sources import SOURCE_REGISTRY, fetch_all
 from uap_signal.store import Store
@@ -26,7 +32,7 @@ def check(
     date_str: str | None = typer.Option(None, "--date", help="Date in YYYY-MM-DD format."),
     source: str | None = typer.Option(None, "--source", help="Single source name."),
     max_items: int | None = typer.Option(None, "--max-items", help="Max items sent to LLM."),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Estimate cost only."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Fetch and show items without LLM analysis or DB writes."),
     model_provider: str | None = typer.Option(None, "--provider", help="anthropic or openai."),
     model: str | None = typer.Option(None, "--model", help="Override LLM model."),
 ) -> None:
@@ -49,6 +55,7 @@ def check(
     print_source_errors(source_errors)
 
     if dry_run:
+        print_fetched_table(releases)
         print_cost_estimate(len(releases))
         return
 

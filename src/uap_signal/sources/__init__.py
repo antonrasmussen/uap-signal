@@ -16,6 +16,12 @@ def _war_gov_fetch(target_date: date, extract_content: bool = True) -> list[Rele
     return war_gov.fetch(target_date, extract_content=extract_content)
 
 
+def _warufo_fetch(target_date: date, extract_content: bool = True) -> list[Release]:
+    from uap_signal.sources import warufo
+
+    return warufo.fetch(target_date, extract_content=extract_content)
+
+
 def _news_rss_fetch(target_date: date, extract_content: bool = True) -> list[Release]:
     from uap_signal.sources import news_rss
 
@@ -42,6 +48,7 @@ def _congress_fetch(target_date: date, extract_content: bool = True) -> list[Rel
 
 SOURCE_REGISTRY = {
     "war_gov": _war_gov_fetch,
+    "warufo": _warufo_fetch,
     "news_rss": _news_rss_fetch,
     "black_vault": _black_vault_fetch,
     "aaro": _aaro_fetch,
@@ -55,7 +62,7 @@ def fetch_all(
     errors: list[str] | None = None,
     extract_content: bool = True,
 ) -> list[Release]:
-    names = selected_sources or ["war_gov", "news_rss"]
+    names = selected_sources or ["news_rss", "warufo"]
     unknown = sorted(set(names) - set(SOURCE_REGISTRY))
     if unknown:
         supported = ", ".join(sorted(SOURCE_REGISTRY))

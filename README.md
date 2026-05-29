@@ -4,7 +4,7 @@
 
 ## What it does
 
-- Pulls from `war.gov/ufo` and Google News RSS by default
+- Pulls from Google News RSS and the WARUFO.com PURSUE archive index by default
 - Classifies items with rule-based source trust logic
 - Uses one LLM provider at a time for summaries and novelty scoring
 - Caches results in SQLite to avoid repeat API spend
@@ -60,9 +60,11 @@ uap-signal config
 ## Notes
 
 - Date semantics are **first seen by us**, not necessarily publisher timestamp.
-- `--dry-run` estimates LLM spend without writing to the SQLite cache or extracting full article/PDF text.
+- `--dry-run` fetches and prints item titles/URLs, estimates LLM spend, and skips DB writes and full article/PDF extraction.
 - Classification is split from summarization:
   - Classification: rule-based (`classifier.py`)
   - Summarization/scoring: LLM (`analyzer.py`)
 - `v1` sources (`black_vault`, `aaro`, `congress`) are implemented and available in the source registry.
+- `war_gov` source (`https://www.war.gov/ufo`) is registered but currently blocked by Akamai CDN. The `warufo` source indexes the same PURSUE records via the accessible `warufo.com` third-party archive.
+- `news_rss` uses Google News RSS. Article links are Google redirect URLs that resolve in a browser.
 - Source failures are reported as CLI warnings so a partial report is not mistaken for a complete fetch.

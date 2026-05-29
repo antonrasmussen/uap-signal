@@ -46,6 +46,20 @@ def print_sources(rows: list[dict]) -> None:
     console.print(table)
 
 
+def print_fetched_table(releases: list[Release]) -> None:
+    if not releases:
+        console.print("[yellow]No items fetched.[/yellow]")
+        return
+    table = Table(title=f"Fetched Items ({len(releases)} total)")
+    table.add_column("Source")
+    table.add_column("Title")
+    table.add_column("URL")
+    for r in releases:
+        title = r.title[:80] + "…" if len(r.title) > 80 else r.title
+        table.add_row(r.source_name, title, r.url)
+    console.print(table)
+
+
 def print_cost_estimate(item_count: int) -> None:
     estimated = round(item_count * 0.002, 3)
     console.print(f"[yellow]Dry run:[/yellow] {item_count} items would be analyzed. Estimated LLM cost: ~${estimated}")

@@ -1,4 +1,4 @@
-"""war.gov/ufo source fetcher."""
+"""war.gov/ufo source fetcher (currently inaccessible via httpx — Akamai CDN blocks automated requests)."""
 
 from __future__ import annotations
 
