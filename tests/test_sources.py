@@ -22,7 +22,7 @@ def test_warufo_parses_archive_table(monkeypatch):
     <body>
     <table>
     <tr><th>#</th><th>Agency</th><th>Title</th><th>Description</th><th>Date</th><th>Location</th><th>Link</th></tr>
-    <tr>
+    <tr data-release="02">
         <td>1</td>
         <td>DoW</td>
         <td><a href="/document/1">DOW-UAP-PR050, Four UAP Formation</a></td>
@@ -31,14 +31,14 @@ def test_warufo_parses_archive_table(monkeypatch):
         <td>CENTCOM</td>
         <td><a href="https://www.dvidshub.net/video/1007706">▶</a></td>
     </tr>
-    <tr>
+    <tr data-release="05">
         <td>2</td>
         <td>CIA</td>
         <td><a href="/document/2">CIA-UAP-D001, Intelligence Report</a></td>
         <td>Classified intelligence report from 1973</td>
         <td>12/20/73</td>
         <td>USSR</td>
-        <td><a href="https://www.war.gov/medialink/ufo/doc.pdf">📄</a></td>
+        <td><a href="https://www.war.gov/medialink/ufo/release_05/Aug_07/documents/doc.pdf">📄</a></td>
     </tr>
     </table>
     </body>
@@ -60,12 +60,17 @@ def test_warufo_parses_archive_table(monkeypatch):
     assert r1.content_type == ContentType.VIDEO
     assert r1.metadata["agency"] == "DoW"
     assert r1.metadata["location"] == "CENTCOM"
+    assert r1.metadata["data_release"] == "02"
 
     r2 = releases[1]
     assert r2.title == "CIA-UAP-D001, Intelligence Report"
-    assert r2.url == "https://www.war.gov/medialink/ufo/doc.pdf"
+    assert r2.url == "https://www.war.gov/medialink/ufo/release_05/Aug_07/documents/doc.pdf"
     assert r2.content_type == ContentType.PDF
+    assert r2.metadata["data_release"] == "05"
 
+    only_05 = warufo.fetch(date(2026, 8, 7), extract_content=False, release_filter="5")
+    assert len(only_05) == 1
+    assert only_05[0].metadata["data_release"] == "05"
 
 def test_fetch_all_rejects_unknown_source():
     with pytest.raises(ValueError, match="Unknown source"):

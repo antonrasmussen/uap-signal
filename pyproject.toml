@@ -20,7 +20,12 @@ dependencies = [
     "python-dotenv>=1.1",
     "tenacity>=9.0",
     "pypdf>=5.0",
+    "jinja2>=3.1",
+    "markdown>=3.5",
 ]
+
+[tool.setuptools.package-data]
+uap_signal = ["templates/*.j2"]
 
 [project.optional-dependencies]
 dev = [

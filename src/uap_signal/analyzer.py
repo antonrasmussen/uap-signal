@@ -229,3 +229,87 @@ def summarize_release(
     )
     store.save_analysis(result)
     return result
+
+
+SYNTHESIS_PROMPT = """You are synthesizing a PURSUE UAP release intelligence report.
+Return ONLY valid JSON with keys:
+- executive_summary (2-4 paragraph plain-language overview of the release)
+- key_findings (array of exactly 3 short finding strings)
+- character (one short phrase describing the release character for a comparison table)
+- next_steps (array of 2-4 concrete follow-up actions)
+
+Do not invent documents that are not in the item list. Prefer concrete IDs, agencies, years, and novelty themes.
+
+Release ID: {release_id}
+Release date: {release_date}
+Item count: {item_count}
+Agency mix: {agency_mix}
+Average novelty: {avg_novelty}
+
+Top items (title | agency | novelty | summary):
+{item_lines}
+"""
+
+
+def synthesize_report(
+    *,
+    release_id: str,
+    release_date: str,
+    items: list[tuple[Release, AnalysisResult]],
+    settings: Settings,
+    provider_override: str | None = None,
+    model_override: str | None = None,
+):
+    """Produce executive summary / key findings for a release report."""
+    from collections import Counter
+
+    from uap_signal.report import Synthesis
+
+    provider, model = _resolve_provider_settings(settings, provider_override, model_override)
+    agencies = Counter((r.metadata or {}).get("agency") or r.source_name for r, _ in items)
+    scores = [a.novelty_score for _, a in items]
+    avg = round(sum(scores) / len(scores), 2) if scores else 0
+    ranked = sorted(items, key=lambda pair: (-pair[1].novelty_score, pair[0].title.lower()))
+    item_lines = []
+    for release, analysis in ranked[:40]:
+        agency = (release.metadata or {}).get("agency") or release.source_name
+        item_lines.append(
+            f"- {release.title} | {agency} | {analysis.novelty_score}/10 | {analysis.summary}"
+        )
+    prompt = SYNTHESIS_PROMPT.format(
+        release_id=release_id,
+        release_date=release_date,
+        item_count=len(items),
+        agency_mix=", ".join(f"{k} ({v})" for k, v in agencies.most_common()),
+        avg_novelty=avg,
+        item_lines="\n".join(item_lines) or "(none)",
+    )
+
+    if provider == "openai":
+        data = _openai_summarize(settings, model, prompt)
+    else:
+        from anthropic import Anthropic
+
+        client = Anthropic(api_key=settings.anthropic_api_key)
+        resp = client.messages.create(
+            model=model,
+            max_tokens=1200,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text = "".join(block.text for block in resp.content if getattr(block, "type", "") == "text")
+        data = _parse_json_response(text)
+
+    findings = data.get("key_findings") or []
+    if isinstance(findings, str):
+        findings = [findings]
+    next_steps = data.get("next_steps") or []
+    if isinstance(next_steps, str):
+        next_steps = [next_steps]
+
+    return Synthesis(
+        executive_summary=str(data.get("executive_summary") or "No executive summary generated."),
+        key_findings=[str(x) for x in findings][:3],
+        character=str(data.get("character") or f"PURSUE Release {release_id}"),
+        next_steps=[str(x) for x in next_steps][:4],
+    )
+

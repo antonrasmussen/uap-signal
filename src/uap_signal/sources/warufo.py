@@ -17,9 +17,48 @@ from uap_signal.models import ContentType, Release, SourceTrust
 BASE_URL = "https://warufo.com"
 ARCHIVE_URL = f"{BASE_URL}/archive"
 
+_OFFICIAL_AGENCIES = {"DoD", "DoW", "CIA", "NASA", "FBI", "ODNI", "DOE", "State", "DoS", "EOP"}
 
-def fetch(target_date: date, extract_content: bool = True) -> list[Release]:
+
+def _normalize_release_id(value: str | None) -> str | None:
+    if value is None:
+        return None
+    cleaned = value.strip()
+    if not cleaned:
+        return None
+    if cleaned.isdigit():
+        return cleaned.zfill(2)
+    return cleaned
+
+
+def _row_data_release(row) -> str | None:
+    raw = row.get("data-release")
+    if raw:
+        return _normalize_release_id(str(raw))
+    for child in row.find_all(True):
+        child_raw = child.get("data-release")
+        if child_raw:
+            return _normalize_release_id(str(child_raw))
+    return None
+
+
+def _content_type_for_link(link: str | None) -> ContentType:
+    if link and "dvidshub.net" in link:
+        return ContentType.VIDEO
+    if link and link.lower().endswith(".pdf"):
+        return ContentType.PDF
+    if link and link.lower().endswith((".jpg", ".jpeg", ".png", ".gif", ".webp")):
+        return ContentType.IMAGE
+    return ContentType.HTML
+
+
+def fetch(
+    target_date: date,
+    extract_content: bool = True,
+    release_filter: str | None = None,
+) -> list[Release]:
     del extract_content
+    wanted = _normalize_release_id(release_filter)
     html = get_text(ARCHIVE_URL)
     soup = BeautifulSoup(html, "html.parser")
     releases: list[Release] = []
@@ -33,9 +72,13 @@ def fetch(target_date: date, extract_content: bool = True) -> list[Release]:
         if len(cols) < 7:
             continue
 
+        data_release = _row_data_release(row)
+        if wanted and data_release != wanted:
+            continue
+
         title_cell = cols[2]
         title_a = title_cell.find("a")
-        title = (title_a.get_text(strip=True) if title_a else title_cell.get_text(strip=True))
+        title = title_a.get_text(strip=True) if title_a else title_cell.get_text(strip=True)
         if not title:
             continue
 
@@ -51,15 +94,10 @@ def fetch(target_date: date, extract_content: bool = True) -> list[Release]:
         incident_date = cols[4].get_text(strip=True) if len(cols) > 4 else ""
         location = cols[5].get_text(strip=True) if len(cols) > 5 else ""
 
-        if link and "dvidshub.net" in link:
-            content_type = ContentType.VIDEO
-        elif link and link.endswith(".pdf"):
-            content_type = ContentType.PDF
-        else:
-            content_type = ContentType.HTML
-
-        agencies_offical = {"DoD", "DoW", "CIA", "NASA", "FBI", "ODNI", "DOE", "State"}
-        is_official = any(agency.upper().startswith(a) for a in {a.upper() for a in agencies_offical})
+        content_type = _content_type_for_link(link)
+        is_official = any(agency.upper().startswith(a.upper()) for a in _OFFICIAL_AGENCIES) or agency.startswith(
+            "Executive"
+        )
 
         releases.append(
             Release(
@@ -77,6 +115,7 @@ def fetch(target_date: date, extract_content: bool = True) -> list[Release]:
                     "location": location,
                     "detail_page": detail_page,
                     "archive_url": ARCHIVE_URL,
+                    "data_release": data_release,
                 },
             )
         )

@@ -1,0 +1,17 @@
+# UAP Signal Weekly News Digest — {{ report_date }}
+
+{{ count }} new news items since the last digest{% if count %} (avg novelty {{ avg_novelty }}/10){% endif %}.
+
+{% if items %}
+{% for item in items %}
+## {{ item.release.title }}
+
+- **Novelty:** {{ item.novelty }}/10
+- **Summary:** {{ item.analysis.summary }}
+- **Why it matters:** {{ item.analysis.why_it_matters or "—" }}
+- [Link]({{ item.release.url }})
+
+{% endfor %}
+{% else %}
+No new notable news items this week.
+{% endif %}

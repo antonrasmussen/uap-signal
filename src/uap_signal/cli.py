@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
+from pathlib import Path
 
 import typer
 
@@ -16,8 +17,18 @@ from uap_signal.display import (
     print_source_errors,
     print_sources,
 )
+from uap_signal.mailer import send_failure_alert, send_markdown_email
 from uap_signal.models import AnalysisResult, Classification, ContentType, Release, SourceTrust
-from uap_signal.sources import SOURCE_REGISTRY, fetch_all
+from uap_signal.pipeline import (
+    backfill_existing_reports,
+    generate_release_report,
+    run_digest,
+    run_watch,
+    send_existing_report,
+)
+from uap_signal.release_watch import ReleaseBatch, detect_new_releases, format_release_label
+from uap_signal.sources import SOURCE_REGISTRY, fetch_all, warufo
+from uap_signal.state import load_release_state
 from uap_signal.store import Store
 
 app = typer.Typer(help="UAP Signal: cut through UAP/UFO release noise.")
@@ -109,6 +120,7 @@ def check(
     print_report(target_date.isoformat(), rows)
     if new_count or cached_count:
         from rich.console import Console
+
         Console().print(f"{new_count} new, {cached_count} cached", style="dim")
 
 
@@ -132,7 +144,9 @@ def analyze(
         store.save_releases([release])
         classification = classify_release(release, store=store)
         try:
-            result = summarize_release(release, classification, settings, store, provider_override=provider, model_override=model)
+            result = summarize_release(
+                release, classification, settings, store, provider_override=provider, model_override=model
+            )
         except AnalysisConfigurationError as exc:
             raise typer.BadParameter(str(exc)) from exc
     print_report(date.today().isoformat(), [(release, result)])
@@ -187,6 +201,135 @@ def config() -> None:
     typer.echo(f"model={settings.model}")
     typer.echo(f"anthropic_api_key={masked_anthropic}")
     typer.echo(f"openai_api_key={masked_openai}")
+    typer.echo(f"email_provider={settings.email_provider}")
+    typer.echo(f"email_to={'set' if settings.email_to else 'missing'}")
+    typer.echo(f"reports_dir={settings.reports_dir}")
+    typer.echo(f"state_dir={settings.state_dir}")
+
+
+@app.command("watch")
+def watch(
+    dry_run: bool = typer.Option(False, "--dry-run", help="Skip email and state/report writes."),
+    force_release: str | None = typer.Option(None, "--force-release", help="Process a specific release ID."),
+    no_heartbeat: bool = typer.Option(False, "--no-heartbeat", help="Skip heartbeat email when nothing is new."),
+    provider: str | None = typer.Option(None, "--provider", help="anthropic or openai."),
+    model: str | None = typer.Option(None, "--model", help="Override LLM model."),
+) -> None:
+    """Daily watcher: detect new PURSUE releases, report + email, or heartbeat."""
+    settings = get_settings()
+    try:
+        result = run_watch(
+            settings,
+            dry_run=dry_run,
+            force_release=force_release,
+            no_heartbeat=no_heartbeat,
+            provider=provider,
+            model=model,
+        )
+    except AnalysisConfigurationError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    except Exception as exc:
+        if not dry_run:
+            send_failure_alert(settings, str(exc))
+        raise
+
+    typer.echo(f"status={result['status']}")
+    typer.echo(f"new_releases={','.join(result['new_releases']) or '-'}")
+    typer.echo(f"emailed={result['emailed']}")
+    if result["report_paths"]:
+        typer.echo("reports=" + ", ".join(result["report_paths"]))
+
+
+@app.command("report")
+def report_cmd(
+    release_id: str = typer.Argument(..., help="Release ID such as 05 or 5."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Analyze/render without writing state."),
+    provider: str | None = typer.Option(None, "--provider", help="anthropic or openai."),
+    model: str | None = typer.Option(None, "--model", help="Override LLM model."),
+) -> None:
+    """Generate a markdown report for a specific PURSUE release (no email)."""
+    settings = get_settings()
+    rid = format_release_label(release_id)
+    batches = detect_new_releases(load_release_state(settings.state_dir), force_release=rid)
+    if not batches:
+        items = warufo.fetch(date.today(), extract_content=False, release_filter=rid)
+        if not items:
+            raise typer.BadParameter(f"Release {rid} not found in warufo archive.")
+        batches = [ReleaseBatch(release_id=rid, items=items)]
+    try:
+        markdown, path = generate_release_report(
+            batches[0],
+            settings,
+            dry_run=dry_run,
+            provider=provider,
+            model=model,
+        )
+    except AnalysisConfigurationError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    typer.echo(f"wrote={path}")
+    typer.echo(f"chars={len(markdown)}")
+
+
+@app.command("send-report")
+def send_report(
+    path: Path,
+) -> None:
+    """Email an existing markdown report file."""
+    if not path.exists() or not path.is_file():
+        raise typer.BadParameter(f"Report not found: {path}")
+    settings = get_settings()
+    ok = send_existing_report(settings, path)
+    if not ok:
+        raise typer.Exit(code=1)
+    typer.echo(f"sent={path}")
+
+
+@app.command("digest")
+def digest(
+    dry_run: bool = typer.Option(False, "--dry-run", help="Skip email and news-state writes."),
+    provider: str | None = typer.Option(None, "--provider", help="anthropic or openai."),
+    model: str | None = typer.Option(None, "--model", help="Override LLM model."),
+) -> None:
+    """Weekly news digest: analyze new RSS items and email a digest."""
+    settings = get_settings()
+    try:
+        result = run_digest(settings, dry_run=dry_run, provider=provider, model=model)
+    except AnalysisConfigurationError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    except Exception as exc:
+        if not dry_run:
+            send_failure_alert(settings, str(exc))
+        raise
+    typer.echo(f"status={result['status']}")
+    typer.echo(f"item_count={result['item_count']}")
+    typer.echo(f"emailed={result['emailed']}")
+
+
+@app.command("send-test")
+def send_test() -> None:
+    """Send a short SMTP/Resend connectivity test email."""
+    settings = get_settings()
+    body = (
+        f"# UAP Signal test email\n\n"
+        f"Provider: `{settings.email_provider}`\n\n"
+        f"If you received this, email delivery is working."
+    )
+    ok = send_markdown_email(settings, subject="UAP Signal test email", markdown_body=body)
+    if not ok:
+        raise typer.Exit(code=1)
+    typer.echo("sent=test")
+
+
+@app.command("backfill-email")
+def backfill_email() -> None:
+    """Email all existing reports in reports/ as separate messages (oldest first)."""
+    settings = get_settings()
+    sent = backfill_existing_reports(settings)
+    if not sent:
+        typer.echo("sent=0")
+        raise typer.Exit(code=1)
+    for path in sent:
+        typer.echo(f"sent={path}")
 
 
 if __name__ == "__main__":

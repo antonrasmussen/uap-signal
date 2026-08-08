@@ -1,0 +1,84 @@
+name: Weekly UAP Signal News Digest
+
+on:
+  schedule:
+    - cron: "0 12 * * 1"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Run digest without email/state writes"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Run weekly digest
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          UAP_SIGNAL_PROVIDER: ${{ vars.UAP_SIGNAL_PROVIDER || 'openai' }}
+          UAP_SIGNAL_MODEL: ${{ vars.UAP_SIGNAL_MODEL || 'gpt-4.1-mini' }}
+          UAP_SIGNAL_DB: .uap_signal.db
+          EMAIL_PROVIDER: ${{ vars.EMAIL_PROVIDER || 'smtp' }}
+          EMAIL_FROM: ${{ vars.EMAIL_FROM || 'reports@example.com' }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          SMTP_HOST: ${{ vars.SMTP_HOST || 'smtp.gmail.com' }}
+          SMTP_PORT: ${{ vars.SMTP_PORT || '587' }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
+        run: |
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            uap-signal digest --dry-run
+          else
+            uap-signal digest
+          fi
+
+      - name: Commit news state updates
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
+        run: |
+          if [ -n "$(git status --porcelain state)" ]; then
+            git config user.name "uap-signal-bot"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add state
+            git commit -m "chore: weekly news digest state update"
+            git push
+          else
+            echo "No news-state changes to commit"
+          fi
+
+      - name: Notify on failure
+        if: failure()
+        env:
+          EMAIL_PROVIDER: ${{ vars.EMAIL_PROVIDER || 'smtp' }}
+          EMAIL_FROM: ${{ vars.EMAIL_FROM || 'reports@example.com' }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
+          SMTP_HOST: ${{ vars.SMTP_HOST || 'smtp.gmail.com' }}
+          SMTP_PORT: ${{ vars.SMTP_PORT || '587' }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+        run: >
+          python -c "from uap_signal.config import get_settings;
+          from uap_signal.mailer import send_failure_alert;
+          send_failure_alert(get_settings(), 'GitHub Actions weekly digest failed. Check logs.')"

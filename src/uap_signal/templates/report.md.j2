@@ -1,0 +1,110 @@
+{# PURSUE release intelligence report #}
+# PURSUE Release {{ release_id }} — UAP Signal Intelligence Report
+
+**Report date:** {{ report_date }}  
+**Prepared by:** uap-signal automated analysis  
+**Subject:** Pentagon PURSUE Release {{ release_id }} ({{ release_date }}) and surrounding news cycle
+
+---
+
+## Executive Summary
+
+{{ synthesis.executive_summary }}
+
+{% if synthesis.key_findings %}
+**Key findings:**
+
+{% for finding in synthesis.key_findings %}
+{{ loop.index }}. {{ finding }}
+{% endfor %}
+{% endif %}
+
+---
+
+## Methodology
+
+| Run | Approach | Items analyzed |
+|-----|----------|----------------|
+| Primary documents | warufo `data-release="{{ release_id }}"` + LLM analysis | **{{ file_count }}/{{ file_count }}** Release {{ release_id }} items |
+| News/media sweep | `news_rss` since prior release | {{ news|length }} CONTEXT items |
+
+Classification: rule-based (`classifier.py`) + LLM summarization/novelty (`analyzer.py`). Scores ≥6 flagged as high-signal.
+
+---
+
+## Release {{ release_id }}: Primary Document Analysis
+
+**Composition:** {{ stats.agency_summary }} — by type: {{ stats.type_summary }}. Avg novelty **{{ stats.avg_novelty }}/10**.
+
+{% if novelty_groups.top %}
+### Top signal (novelty 8+/10)
+
+{% for item in novelty_groups.top %}
+#### {{ item.release.title }}
+- **Agency:** {{ item.agency }}
+- **Novelty:** {{ item.novelty }}/10
+- **Summary:** {{ item.analysis.summary }}
+- **Why it matters:** {{ item.analysis.why_it_matters or "—" }}
+- [Link]({{ item.release.url }})
+
+{% endfor %}
+{% endif %}
+
+{% if novelty_groups.high %}
+### High signal (novelty 6–7/10)
+
+{% for item in novelty_groups.high %}
+#### {{ item.release.title }}
+- **Agency:** {{ item.agency }} | **Novelty:** {{ item.novelty }}/10
+- {{ item.analysis.summary }}
+- [Link]({{ item.release.url }})
+
+{% endfor %}
+{% endif %}
+
+{% if novelty_groups.mid %}
+### Mid / lower signal (novelty ≤5/10)
+
+{% for item in novelty_groups.mid %}
+- **{{ item.release.title }}** ({{ item.agency }}, {{ item.novelty }}/10) — {{ item.analysis.summary }} ([link]({{ item.release.url }}))
+{% endfor %}
+{% endif %}
+
+---
+
+## News Cycle
+
+{% if news %}
+{{ news|length }} RSS items analyzed; themes below.
+
+{% for item in news %}
+- **{{ item.release.title }}** (novelty {{ item.novelty }}/10) — {{ item.analysis.summary }} ([link]({{ item.release.url }}))
+{% endfor %}
+{% else %}
+No new news items analyzed for this cycle.
+{% endif %}
+
+---
+
+## Cross-Release Comparison
+
+| Release | Date | Files added | Character |
+|---------|------|-------------|-----------|
+{% for row in cross_release_rows %}
+| {{ row.id }} | {{ row.date }} | {{ row.files }} | {{ row.character }} |
+{% endfor %}
+
+Cumulative archive size after this release: **{{ cumulative }}** files.
+
+---
+
+## Suggested Next Steps
+
+{% if synthesis.next_steps %}
+{% for step in synthesis.next_steps %}
+{{ loop.index }}. {{ step }}
+{% endfor %}
+{% else %}
+1. Spot-check the highest-novelty PDFs and videos linked above.
+2. Re-run `uap-signal watch` on the next PURSUE cadence (~2–4 weeks).
+{% endif %}

@@ -1,0 +1,9 @@
+# UAP Signal Heartbeat — {{ report_date }}
+
+No new PURSUE release detected today.
+
+**Status:** pipeline healthy  
+**Tracked releases:** {{ seen_releases|join(", ") if seen_releases else "none yet" }}  
+**Latest known release:** {{ latest_release or "—" }}
+
+This is an automated daily check from `uap-signal watch`. You will receive a full intelligence report when warufo indexes a new `data-release` batch.

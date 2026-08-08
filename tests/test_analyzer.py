@@ -15,6 +15,17 @@ def _settings(provider: str = "anthropic", model: str = "test-model") -> Setting
         model=model,
         max_items=25,
         request_timeout_seconds=30,
+        email_provider="smtp",
+        email_from="from@example.com",
+        email_to="to@example.com",
+        alert_email_to="",
+        smtp_host="smtp.gmail.com",
+        smtp_port=587,
+        smtp_user="",
+        smtp_password="",
+        resend_api_key="",
+        reports_dir="reports",
+        state_dir="state",
     )
 
 

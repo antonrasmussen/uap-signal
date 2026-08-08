@@ -24,6 +24,17 @@ class Settings:
     model: str
     max_items: int
     request_timeout_seconds: int
+    email_provider: str
+    email_from: str
+    email_to: str
+    alert_email_to: str
+    smtp_host: str
+    smtp_port: int
+    smtp_user: str
+    smtp_password: str
+    resend_api_key: str
+    reports_dir: str
+    state_dir: str
 
 
 def _env_int(name: str, default: int) -> int:
@@ -47,4 +58,15 @@ def get_settings() -> Settings:
         model=model,
         max_items=_env_int("UAP_SIGNAL_MAX_ITEMS", 25),
         request_timeout_seconds=_env_int("UAP_SIGNAL_HTTP_TIMEOUT", 30),
+        email_provider=os.getenv("EMAIL_PROVIDER", "smtp").lower(),
+        email_from=os.getenv("EMAIL_FROM", "reports@example.com"),
+        email_to=os.getenv("EMAIL_TO", ""),
+        alert_email_to=os.getenv("ALERT_EMAIL_TO", ""),
+        smtp_host=os.getenv("SMTP_HOST", "smtp.gmail.com"),
+        smtp_port=_env_int("SMTP_PORT", 587),
+        smtp_user=os.getenv("SMTP_USER", ""),
+        smtp_password=os.getenv("SMTP_PASSWORD", ""),
+        resend_api_key=os.getenv("RESEND_API_KEY", ""),
+        reports_dir=os.getenv("UAP_SIGNAL_REPORTS_DIR", "reports"),
+        state_dir=os.getenv("UAP_SIGNAL_STATE_DIR", "state"),
     )

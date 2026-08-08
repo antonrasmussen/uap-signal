@@ -5,7 +5,12 @@ from __future__ import annotations
 import httpx
 
 DEFAULT_HEADERS = {
-    "User-Agent": "uap-signal/0.1 (+https://example.local)",
+    "User-Agent": (
+        "Mozilla/5.0 (compatible; uap-signal/0.1; "
+        "+https://github.com/antonrasmussen/uap-signal)"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/pdf,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
 }
 
 
